@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">AlarmClockTask</string>
+    <string name="channel_name">Alarm channel</string>
+    <string name="cancel_alarm">Cancel alarm</string>
+    <string name="warning_notification">Alarm will fire soon.</string>
+    <string name="ringtone_dialog_title">Pick ringtone for alarm</string>
+    <string name="alarm_is_ringing">ALARM IS RINGING</string>
+    <string name="alarm">Alarm!</string>
+    <string name="pick_time">You need to pick time</string>
+    <string name="pick_ringtone">Pick ringtone</string>
+    <string name="ringtone_name">Ringtone name:</string>
+    <string name="pick_time_alarm">Pick time</string>
+    <string name="alarm_time">Alarm time:</string>
+    <string name="setup_alarm">Setup alarm</string>
+    <string name="dismiss">Dismiss</string>
+
+
+</resources>
