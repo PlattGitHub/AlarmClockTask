@@ -13,6 +13,5 @@
     <string name="alarm_time">Alarm time:</string>
     <string name="setup_alarm">Setup alarm</string>
     <string name="dismiss">Dismiss</string>
-
-
+    <string name="notification_alarm">Alarm %1$s</string>
 </resources>

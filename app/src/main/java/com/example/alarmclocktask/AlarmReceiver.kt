@@ -3,7 +3,6 @@ package com.example.alarmclocktask
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 
 /**
  * [BroadcastReceiver] subclass that performs actions of AlarmManager.
@@ -15,34 +14,41 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         intent?.let {
             when (it.action) {
-                Utils.NOTIFICATION_INTENT_ACTION -> {
-                    val hours = intent.getIntExtra(Utils.ALARM_HOURS_EXTRA, -1)
-                    val minutes = intent.getIntExtra(Utils.ALARM_MINUTES_EXTRA, -1)
-                    val ringtoneName = intent.getStringExtra(Utils.ALARM_RINGTONE_EXTRA) ?: ""
-                    Utils.createNotification(context, minutes, hours, ringtoneName)
+                NOTIFICATION_INTENT_ACTION -> {
+                    val (minutes, hours) = Utils.getTimeAlarm(context)
+                    Utils.createNotification(
+                        context,
+                        minutes,
+                        hours
+                    )
                 }
-                Utils.FIRE_ALARM_INTENT_ACTION -> {
-                    val ringtone = intent.getStringExtra(Utils.ALARM_RINGTONE_EXTRA) ?: ""
+                FIRE_ALARM_INTENT_ACTION -> {
+                    Utils.cancelNotification(context)
+                    Utils.setupRepeatingAlarm(context)
+                    Utils.setCancelledAlarm(context, false)
+
+                    val ringtone = Utils.getRingtoneAlarm(context)
                     if (ringtone != "") {
                         Utils.playRingtone(context, ringtone)
                     }
-                    Utils.cancelNotification(context)
-                    val intentFire = Intent(context, AlarmFireActivity::class.java).apply {
+                    context.startActivity(Intent(context, AlarmFireActivity::class.java).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intentFire)
+                    })
+
                 }
-                Utils.CANCEL_INTENT_ACTION -> {
-                    val hours = intent.getIntExtra(Utils.ALARM_HOURS_EXTRA, -1)
-                    val minutes = intent.getIntExtra(Utils.ALARM_MINUTES_EXTRA, -1)
-                    val ringtoneName = intent.getStringExtra(Utils.ALARM_RINGTONE_EXTRA) ?: ""
-                    Utils.cancelFireAlarm(context, minutes, hours, ringtoneName)
+                CANCEL_INTENT_ACTION -> {
+                    Utils.cancelFireAlarm(context)
                     Utils.cancelNotification(context)
-                }
-                else -> {
-                    return
+                    Utils.setCancelledAlarm(context, true)
+                    Utils.setupRepeatingAlarm(context)
                 }
             }
         }
+    }
+
+    companion object {
+        const val CANCEL_INTENT_ACTION = "com.example.alarmclocktask.CANCEL_INTENT_ACTION"
+        const val NOTIFICATION_INTENT_ACTION = "com.example.alarmclocktask.NOTIFICATION_INTENT_ACTION"
+        const val FIRE_ALARM_INTENT_ACTION = "com.example.alarmclocktask.FIRE_ALARM_INTENT_ACTION"
     }
 }

@@ -16,6 +16,9 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.edit
+import com.example.alarmclocktask.AlarmReceiver.Companion.CANCEL_INTENT_ACTION
+import com.example.alarmclocktask.AlarmReceiver.Companion.FIRE_ALARM_INTENT_ACTION
+import com.example.alarmclocktask.AlarmReceiver.Companion.NOTIFICATION_INTENT_ACTION
 import java.text.DateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -32,6 +35,7 @@ object Utils {
     private const val ALARM_HOURS_KEY = "com.example.alarmclocktask.ALARM_HOURS_KEY"
     private const val ALARM_RINGTONE_KEY = "com.example.alarmclocktask.ALARM_MUSIC_KEY"
     private const val ALARM_IS_SET = "com.example.alarmclocktask.ALARM_IS_SET"
+    private const val ALARM_IS_CANCELLED = "com.example.alarmclocktask.ALARM_IS_CANCELLED"
 
     private const val CHANNEL_ID = "CHANNEL_ID"
     private const val NOTIFICATION_ID = 123
@@ -40,14 +44,6 @@ object Utils {
     private const val CANCEL_REQUEST_CODE = 444
 
     private const val DEFAULT_VOLUME = 50F
-
-    const val CANCEL_INTENT_ACTION = "com.example.alarmclocktask.CANCEL_INTENT_ACTION"
-    const val NOTIFICATION_INTENT_ACTION = "com.example.alarmclocktask.NOTIFICATION_INTENT_ACTION"
-    const val FIRE_ALARM_INTENT_ACTION = "com.example.alarmclocktask.FIRE_ALARM_INTENT_ACTION"
-
-    const val ALARM_MINUTES_EXTRA = "ALARM_MINUTES_EXTRA"
-    const val ALARM_HOURS_EXTRA = "ALARM_HOURS_EXTRA"
-    const val ALARM_RINGTONE_EXTRA = "ALARM_RINGTONE_EXTRA"
 
     private val mediaPlayer = MediaPlayer().apply {
         setAudioAttributes(
@@ -62,88 +58,48 @@ object Utils {
 
     fun setupAlarm(context: Context, alarm: Alarm) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val alarmIntentFire = Intent(context, AlarmReceiver::class.java).let { intent ->
-            intent.action = FIRE_ALARM_INTENT_ACTION
-            intent.putExtra(ALARM_RINGTONE_EXTRA, alarm.ringtoneName)
-            PendingIntent.getBroadcast(
-                context,
-                ALARM_FIRE_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-            )
-        }
-        val notificationIntent = Intent(context, AlarmReceiver::class.java).let { intent ->
-            intent.putExtra(ALARM_MINUTES_EXTRA, alarm.minutes)
-            intent.putExtra(ALARM_HOURS_EXTRA, alarm.hours)
-            intent.action = NOTIFICATION_INTENT_ACTION
-            PendingIntent.getBroadcast(
-                context,
-                NOTIFICATION_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT
-            )
-        }
-        val alarmTime = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, alarm.hours)
-            set(Calendar.MINUTE, alarm.minutes)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
+        val alarmFireIntent =
+            setupAlarmPendingIntent(context, PendingIntent.FLAG_UPDATE_CURRENT)
+        val notificationIntent =
+            setupNotificationPendingIntent(context, PendingIntent.FLAG_UPDATE_CURRENT)
+        val alarmTime = getCalendarAlarmTime(alarm)
 
         writeToPrefsAlarm(context, alarm)
-
         enableBootReceiver(context)
 
-        if (Calendar.getInstance().timeInMillis - alarmTime.timeInMillis > 0) {
+        if (Calendar.getInstance().timeInMillis - alarmTime.timeInMillis > 0
+            || isCancelledAlarm(context)
+        ) {
             alarmTime.timeInMillis += TimeUnit.DAYS.toMillis(1)
         }
-        if (alarmTime.timeInMillis - TimeUnit.MINUTES.toMillis(5) <= Calendar.getInstance().timeInMillis) {
-            createNotification(context, alarm.minutes, alarm.hours, alarm.ringtoneName)
-            alarmManager.setRepeating(
-                AlarmManager.RTC_WAKEUP,
-                alarmTime.timeInMillis - TimeUnit.MINUTES.toMillis(5) + TimeUnit.DAYS.toMillis(1),
-                TimeUnit.DAYS.toMillis(1),
-                notificationIntent
-            )
-        } else {
-            alarmManager.setRepeating(
-                AlarmManager.RTC_WAKEUP,
-                alarmTime.timeInMillis - TimeUnit.MINUTES.toMillis(5),
-                TimeUnit.DAYS.toMillis(1),
-                notificationIntent
-            )
-        }
-        alarmManager.setRepeating(
-            AlarmManager.RTC_WAKEUP,
-            alarmTime.timeInMillis,
-            TimeUnit.DAYS.toMillis(1),
-            alarmIntentFire
-        )
+
+        setupAlarmManager(context, alarmTime, alarm, alarmManager, notificationIntent, alarmFireIntent)
     }
 
-    fun stopAlarm(context: Context, alarm: Alarm) {
+    fun setupRepeatingAlarm(context: Context) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val alarmIntentFire = Intent(context, AlarmReceiver::class.java).let { intent ->
-            intent.action = FIRE_ALARM_INTENT_ACTION
-            intent.putExtra(ALARM_RINGTONE_EXTRA, alarm.ringtoneName)
-            PendingIntent.getBroadcast(
-                context,
-                ALARM_FIRE_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_NO_CREATE
-            )
-        }
-        val notificationIntent = Intent(context, AlarmReceiver::class.java).let { intent ->
-            intent.putExtra(ALARM_MINUTES_EXTRA, alarm.minutes)
-            intent.putExtra(ALARM_HOURS_EXTRA, alarm.hours)
-            intent.action = NOTIFICATION_INTENT_ACTION
-            PendingIntent.getBroadcast(
-                context,
-                NOTIFICATION_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_NO_CREATE
-            )
-        }
+
+        val (minutes, hours) = getTimeAlarm(context)
+        val ringtoneName = getRingtoneAlarm(context)
+        val alarm = Alarm(minutes, hours, ringtoneName)
+
+        val alarmFireIntent =
+            setupAlarmPendingIntent(context, PendingIntent.FLAG_UPDATE_CURRENT)
+        val notificationIntent =
+            setupNotificationPendingIntent(context, PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val alarmTime = getCalendarAlarmTime(alarm)
+        alarmTime.timeInMillis += TimeUnit.DAYS.toMillis(1)
+
+        setupAlarmManager(context, alarmTime, alarm, alarmManager, notificationIntent, alarmFireIntent)
+    }
+
+    fun stopAlarm(context: Context) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val alarmIntentFire =
+            setupAlarmPendingIntent(context, PendingIntent.FLAG_NO_CREATE)
+        val notificationIntent =
+            setupNotificationPendingIntent(context, PendingIntent.FLAG_NO_CREATE)
 
         alarmManager.cancel(alarmIntentFire)
         alarmManager.cancel(notificationIntent)
@@ -153,55 +109,73 @@ object Utils {
         disableBootReceiver(context)
     }
 
-    fun cancelFireAlarm(context: Context, minutes: Int, hours: Int, ringtoneName: String) {
+    fun cancelFireAlarm(context: Context) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val alarmIntentFire = Intent(context, AlarmReceiver::class.java).let { intent ->
-            intent.action = FIRE_ALARM_INTENT_ACTION
-            intent.putExtra(ALARM_RINGTONE_EXTRA, ringtoneName)
-            PendingIntent.getBroadcast(
-                context,
-                ALARM_FIRE_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_NO_CREATE
-            )
-        }
+        val alarmIntentFire =
+            setupAlarmPendingIntent(context, PendingIntent.FLAG_NO_CREATE)
+        val notificationIntent =
+            setupNotificationPendingIntent(context, PendingIntent.FLAG_NO_CREATE)
         alarmManager.cancel(alarmIntentFire)
-        setupCanceledAlarm(context, minutes, hours, ringtoneName)
+        alarmManager.cancel(notificationIntent)
     }
 
-    private fun setupCanceledAlarm(
-        context: Context,
-        minutes: Int,
-        hours: Int,
-        ringtoneName: String
-    ) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val alarmIntentFire = Intent(context, AlarmReceiver::class.java).let { intent ->
+    private fun setupAlarmPendingIntent(context: Context, flag: Int) =
+        Intent(context, AlarmReceiver::class.java).let { intent ->
             intent.action = FIRE_ALARM_INTENT_ACTION
-            intent.putExtra(ALARM_RINGTONE_EXTRA, ringtoneName)
             PendingIntent.getBroadcast(
                 context,
                 ALARM_FIRE_REQUEST_CODE,
                 intent,
-                PendingIntent.FLAG_UPDATE_CURRENT
+                flag
             )
         }
 
-        val alarmTime = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hours)
-            set(Calendar.MINUTE, minutes)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-
+    private fun setupNotificationPendingIntent(context: Context, flag: Int) =
+        Intent(context, AlarmReceiver::class.java).let { intent ->
+            intent.action = NOTIFICATION_INTENT_ACTION
+            PendingIntent.getBroadcast(
+                context,
+                NOTIFICATION_REQUEST_CODE,
+                intent,
+                flag
+            )
         }
-        alarmManager.setRepeating(
+
+    private fun getCalendarAlarmTime(alarm: Alarm) = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, alarm.hours)
+        set(Calendar.MINUTE, alarm.minutes)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    private fun setupAlarmManager(
+        context: Context,
+        alarmTime: Calendar,
+        alarm: Alarm,
+        alarmManager: AlarmManager,
+        notificationIntent: PendingIntent,
+        alarmFireIntent: PendingIntent
+    ) {
+        if (alarmTime.timeInMillis - TimeUnit.MINUTES.toMillis(5) <= Calendar.getInstance().timeInMillis) {
+            createNotification(context, alarm.minutes, alarm.hours)
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                alarmTime.timeInMillis - TimeUnit.MINUTES.toMillis(5) + TimeUnit.DAYS.toMillis(1),
+                notificationIntent
+            )
+        } else {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                alarmTime.timeInMillis - TimeUnit.MINUTES.toMillis(5),
+                notificationIntent
+            )
+        }
+        alarmManager.setExactAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,
-            alarmTime.timeInMillis + TimeUnit.DAYS.toMillis(1),
-            TimeUnit.DAYS.toMillis(1),
-            alarmIntentFire
+            alarmTime.timeInMillis,
+            alarmFireIntent
         )
     }
-
 
     private fun enableBootReceiver(context: Context) {
         val receiver = ComponentName(context, BootReceiver::class.java)
@@ -223,8 +197,7 @@ object Utils {
 
     private fun writeToPrefsAlarm(context: Context, alarm: Alarm) {
         val sharedPref =
-            context.getSharedPreferences(ALARM_PREF_FILE_KEY, Context.MODE_PRIVATE)
-                ?: return
+            context.getSharedPreferences(ALARM_PREF_FILE_KEY, Context.MODE_PRIVATE) ?: return
         sharedPref.edit {
             putBoolean(ALARM_IS_SET, true)
             putString(ALARM_RINGTONE_KEY, alarm.ringtoneName)
@@ -233,10 +206,17 @@ object Utils {
         }
     }
 
+    fun setCancelledAlarm(context: Context, isCancelled: Boolean) {
+        val sharedPref =
+            context.getSharedPreferences(ALARM_PREF_FILE_KEY, Context.MODE_PRIVATE) ?: return
+        sharedPref.edit {
+            putBoolean(ALARM_IS_CANCELLED, isCancelled)
+        }
+    }
+
     private fun cleanPrefs(context: Context) {
         val sharedPref =
-            context.getSharedPreferences(ALARM_PREF_FILE_KEY, Context.MODE_PRIVATE)
-                ?: return
+            context.getSharedPreferences(ALARM_PREF_FILE_KEY, Context.MODE_PRIVATE) ?: return
         sharedPref.edit {
             clear()
         }
@@ -247,30 +227,30 @@ object Utils {
         Context.MODE_PRIVATE
     ).getBoolean(ALARM_IS_SET, false)
 
-    fun getTimeAlarm(context: Context): Pair<Int, Int> {
-        return Pair(
-            context.getSharedPreferences(
-                ALARM_PREF_FILE_KEY,
-                Context.MODE_PRIVATE
-            ).getInt(ALARM_HOURS_KEY, -1),
-            context.getSharedPreferences(
-                ALARM_PREF_FILE_KEY,
-                Context.MODE_PRIVATE
-            ).getInt(ALARM_MINUTES_KEY, -1)
-        )
-    }
+    fun getTimeAlarm(context: Context) = Pair(
+        context.getSharedPreferences(
+            ALARM_PREF_FILE_KEY,
+            Context.MODE_PRIVATE
+        ).getInt(ALARM_MINUTES_KEY, -1),
+        context.getSharedPreferences(
+            ALARM_PREF_FILE_KEY,
+            Context.MODE_PRIVATE
+        ).getInt(ALARM_HOURS_KEY, -1)
+    )
+
+    private fun isCancelledAlarm(context: Context) = context.getSharedPreferences(
+        ALARM_PREF_FILE_KEY,
+        Context.MODE_PRIVATE
+    ).getBoolean(ALARM_IS_CANCELLED, false)
 
     fun getRingtoneAlarm(context: Context) = context.getSharedPreferences(
         ALARM_PREF_FILE_KEY,
         Context.MODE_PRIVATE
     ).getString(ALARM_RINGTONE_KEY, "") ?: ""
 
-    fun createNotification(context: Context, minutes: Int, hours: Int, ringtoneName: String = "") {
+    fun createNotification(context: Context, minutes: Int, hours: Int) {
         val cancelIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = CANCEL_INTENT_ACTION
-            putExtra(ALARM_MINUTES_EXTRA, minutes)
-            putExtra(ALARM_HOURS_EXTRA, hours)
-            putExtra(ALARM_RINGTONE_EXTRA, ringtoneName)
         }
         val cancelPendingIntent: PendingIntent =
             PendingIntent.getBroadcast(
@@ -282,7 +262,12 @@ object Utils {
         val channelID = createNotificationChannel(context)
         val builder = NotificationCompat.Builder(context, channelID)
             .setSmallIcon(R.drawable.ic_alarm)
-            .setContentTitle("Alarm ${convertAlarmToDate(Alarm(minutes, hours))}")
+            .setContentTitle(
+                String.format(
+                    context.getString(R.string.notification_alarm),
+                    convertAlarmToDate(Alarm(minutes, hours))
+                )
+            )
             .setContentText(context.getString(R.string.warning_notification))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setOngoing(true)
@@ -353,7 +338,3 @@ object Utils {
         }
     }
 }
-
-
-
-

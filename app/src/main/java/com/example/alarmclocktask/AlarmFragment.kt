@@ -42,8 +42,8 @@ class AlarmFragment : Fragment() {
             if (isAlarmSet) {
                 val time = Utils.getTimeAlarm(it)
                 val ringtone = Utils.getRingtoneAlarm(it)
-                alarm.hours = time.first
-                alarm.minutes = time.second
+                alarm.minutes = time.first
+                alarm.hours = time.second
                 alarm.ringtoneName = ringtone
             }
         }
@@ -53,22 +53,23 @@ class AlarmFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-
-        val view = inflater.inflate(R.layout.fragment_alarm, container, false).apply {
+        return inflater.inflate(R.layout.fragment_alarm, container, false).apply {
             switchButton = findViewById(R.id.switchButton)
             pickTimeButton = findViewById(R.id.pickTimeButton)
             pickRingtoneButton = findViewById(R.id.pickRingtoneButton)
             timeTextView = findViewById(R.id.timeTextView)
             ringtoneTextView = findViewById(R.id.ringtoneNameTextView)
         }
+    }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         if (isAlarmSet) {
             switchButton.isChecked = true
             timeTextView.text = Utils.convertAlarmToDate(alarm)
             if (alarm.ringtoneName != "") {
                 ringtoneTextView.text =
-                    RingtoneManager.getRingtone(context, Uri.parse(alarm.ringtoneName))
-                        .getTitle(context)
+                    RingtoneManager.getRingtone(context, Uri.parse(alarm.ringtoneName)).getTitle(context)
             }
         }
 
@@ -79,11 +80,10 @@ class AlarmFragment : Fragment() {
                     timeTextView.text = Utils.convertAlarmToDate(alarm)
                 } else {
                     switchButton.isChecked = false
-                    Toast.makeText(context, getString(R.string.pick_time), Toast.LENGTH_SHORT)
-                        .show()
+                    Toast.makeText(context, getString(R.string.pick_time), Toast.LENGTH_SHORT).show()
                 }
             } else {
-                context?.let { Utils.stopAlarm(it, alarm) }
+                context?.let { Utils.stopAlarm(it) }
             }
         }
 
@@ -99,8 +99,6 @@ class AlarmFragment : Fragment() {
                 startActivityForResult(intent, RINGTONE_PICKER_REQUEST_CODE)
             }
         }
-
-        return view
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -110,8 +108,7 @@ class AlarmFragment : Fragment() {
                 val uri = data?.extras?.get(RingtoneManager.EXTRA_RINGTONE_PICKED_URI) as Uri?
                 uri?.let {
                     alarm.ringtoneName = uri.toString()
-                    ringtoneTextView.text =
-                        RingtoneManager.getRingtone(context, uri).getTitle(context)
+                    ringtoneTextView.text = RingtoneManager.getRingtone(context, uri).getTitle(context)
                 }
             }
         }
@@ -127,13 +124,7 @@ class AlarmFragment : Fragment() {
         val myCalender = Calendar.getInstance()
         val hourInit = myCalender.get(Calendar.HOUR_OF_DAY)
         val minuteInit = myCalender.get(Calendar.MINUTE)
-        val timePickerDialog = TimePickerDialog(
-            context,
-            timePickerResult,
-            hourInit,
-            minuteInit,
-            true
-        )
+        val timePickerDialog = TimePickerDialog(context, timePickerResult, hourInit, minuteInit, true)
         val handler = Handler(Looper.getMainLooper())
         handler.postDelayed({
             timePickerDialog.show()

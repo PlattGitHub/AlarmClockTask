@@ -15,8 +15,8 @@ class BootService : JobIntentService() {
         if (Utils.isSetAlarm(this)) {
             val alarm = Alarm().apply {
                 val time = Utils.getTimeAlarm(this@BootService)
-                minutes = time.second
-                hours = time.first
+                minutes = time.first
+                hours = time.second
                 ringtoneName = Utils.getRingtoneAlarm(this@BootService)
             }
             Utils.setupAlarm(this, alarm)
